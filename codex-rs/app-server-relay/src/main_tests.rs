@@ -35,7 +35,7 @@ fn defaults_to_stock_codex_and_chatgpt_backend() {
     assert_eq!(
         (
             args.codex,
-            args.session_codex_home,
+            args.codex_home,
             args.remote_control_url,
             args.name,
         ),
@@ -54,6 +54,29 @@ fn verbose_is_a_global_option() {
         .expect("command should parse");
 
     assert!(cli.verbose);
+}
+
+#[test]
+fn relay_home_is_global_and_codex_home_selects_the_child_home() {
+    let cli = Cli::try_parse_from([
+        "codex-relay",
+        "remote-control",
+        "start",
+        "--relay-home",
+        "/tmp/relay-home",
+        "--codex-home",
+        "/tmp/codex-home",
+    ])
+    .expect("command should parse");
+    let RelayCommand::RemoteControl {
+        command: RemoteControlCommand::Start(start),
+    } = cli.command
+    else {
+        panic!("expected remote-control start command");
+    };
+
+    assert_eq!(cli.relay_home, Some(PathBuf::from("/tmp/relay-home")));
+    assert_eq!(start.codex_home, Some(PathBuf::from("/tmp/codex-home")));
 }
 
 #[test]

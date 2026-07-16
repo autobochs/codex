@@ -65,7 +65,8 @@ struct Cli {
     #[arg(long, global = true)]
     verbose: bool,
 
-    #[arg(long, env = "CODEX_RELAY_HOME")]
+    /// CODEX_HOME used for relay authentication and enrollment state.
+    #[arg(long, env = "CODEX_RELAY_HOME", global = true)]
     relay_home: Option<PathBuf>,
 
     #[command(subcommand)]
@@ -110,9 +111,9 @@ struct StartArgs {
     #[arg(long, default_value = "codex")]
     codex: PathBuf,
 
-    /// CODEX_HOME for Codex sessions. Omit to inherit the current environment.
+    /// CODEX_HOME for the child app-server. Omit to inherit the current environment.
     #[arg(long)]
-    session_codex_home: Option<PathBuf>,
+    codex_home: Option<PathBuf>,
 
     /// Override the ChatGPT backend used by remote control.
     #[arg(long, default_value = CHATGPT_BASE_URL)]
@@ -139,9 +140,12 @@ async fn main() -> Result<()> {
     let verbose = cli.verbose;
     let relay_home = match cli.relay_home {
         Some(path) => path,
-        None => dirs::home_dir()
-            .context("could not determine the home directory")?
-            .join(".codex-relay"),
+        None => match std::env::var_os("CODEX_HOME") {
+            Some(path) => PathBuf::from(path),
+            None => dirs::home_dir()
+                .context("could not determine the home directory")?
+                .join(".codex"),
+        },
     };
     std::fs::create_dir_all(&relay_home)
         .with_context(|| format!("failed to create {}", relay_home.display()))?;
@@ -396,8 +400,8 @@ impl ChildRuntime {
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        if let Some(session_codex_home) = &args.session_codex_home {
-            command.env("CODEX_HOME", session_codex_home);
+        if let Some(codex_home) = &args.codex_home {
+            command.env("CODEX_HOME", codex_home);
         }
         let mut child = command.spawn().with_context(|| {
             format!("failed to start Codex executable {}", args.codex.display())
