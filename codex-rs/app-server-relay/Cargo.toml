@@ -27,6 +27,7 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt-multi-thread", "signal", "time"] }
 tokio-tungstenite = { workspace = true }
 tokio-util = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true, features = ["v7"] }
 
 [dev-dependencies]

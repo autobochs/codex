@@ -50,6 +50,7 @@ use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::sync::CancellationToken;
+use tracing_subscriber::EnvFilter;
 
 const CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api/";
 const CHILD_READY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -60,6 +61,10 @@ const UDS_HANDSHAKE_URL: &str = "ws://localhost/rpc";
 #[command(name = "codex-relay")]
 #[command(about = "Bridge ChatGPT remote control to a stock Codex app-server")]
 struct Cli {
+    /// Print detailed transport, enrollment, and pairing diagnostics.
+    #[arg(long, global = true)]
+    verbose: bool,
+
     #[arg(long, env = "CODEX_RELAY_HOME")]
     relay_home: Option<PathBuf>,
 
@@ -121,6 +126,17 @@ struct StartArgs {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let filter = if cli.verbose {
+        EnvFilter::new("codex_app_server_transport=debug,codex_login=info,codex_state=info")
+    } else {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init()
+        .map_err(|error| anyhow!("failed to initialize relay diagnostics: {error}"))?;
+    let verbose = cli.verbose;
     let relay_home = match cli.relay_home {
         Some(path) => path,
         None => dirs::home_dir()
@@ -135,10 +151,10 @@ async fn main() -> Result<()> {
         RelayCommand::Login { browser } => login(relay_home, browser).await,
         RelayCommand::RemoteControl { command } => match command {
             RemoteControlCommand::Start(args) => {
-                run_relay(relay_home, args, PairingMode::None).await
+                run_relay(relay_home, args, PairingMode::None, verbose).await
             }
             RemoteControlCommand::Pair { start } => {
-                run_relay(relay_home, start, PairingMode::Manual).await
+                run_relay(relay_home, start, PairingMode::Manual, verbose).await
             }
         },
     }
@@ -180,7 +196,12 @@ async fn login(relay_home: PathBuf, browser: bool) -> Result<()> {
     Ok(())
 }
 
-async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMode) -> Result<()> {
+async fn run_relay(
+    relay_home: PathBuf,
+    args: StartArgs,
+    pairing_mode: PairingMode,
+    verbose: bool,
+) -> Result<()> {
     let auth_manager = AuthManager::shared(
         relay_home.clone(),
         /*enable_codex_api_key_env*/ false,
@@ -226,6 +247,7 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
 
     let child_runtime = ChildRuntime::start(&args).await?;
     if pairing_mode == PairingMode::Manual {
+        eprintln!("Waiting for the remote-control websocket to connect...");
         let mut status_rx = remote_handle.status_receiver();
         tokio::time::timeout(REMOTE_CONTROL_READY_TIMEOUT, async {
             loop {
@@ -251,6 +273,12 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
         })
         .await
         .context("timed out waiting for the remote-control websocket before pairing")??;
+        let connected = status_rx.borrow().clone();
+        eprintln!(
+            "Remote-control websocket connected as {} (environment {}).",
+            connected.server_name,
+            connected.environment_id.as_deref().unwrap_or("unknown")
+        );
         let pairing = remote_handle
             .start_pairing(
                 RemoteControlPairingStartParams { manual_code: true },
@@ -263,6 +291,7 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
             .context("remote-control backend did not return the requested manual pairing code")?;
         eprintln!("Pairing code: {manual_code}");
         eprintln!("Pairing expires at Unix time {}", pairing.expires_at);
+        eprintln!("Waiting for ChatGPT to claim the pairing code...");
         let pairing_handle = remote_handle.clone();
         tokio::spawn(async move {
             loop {
@@ -285,7 +314,11 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
                         eprintln!("Pairing completed successfully.");
                         break;
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        if verbose {
+                            eprintln!("Pairing status: not yet claimed.");
+                        }
+                    }
                     Err(error) => {
                         eprintln!("Pairing status check failed: {error}");
                         break;

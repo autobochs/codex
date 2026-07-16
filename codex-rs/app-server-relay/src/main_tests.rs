@@ -49,6 +49,14 @@ fn defaults_to_stock_codex_and_chatgpt_backend() {
 }
 
 #[test]
+fn verbose_is_a_global_option() {
+    let cli = Cli::try_parse_from(["codex-relay", "remote-control", "pair", "--verbose"])
+        .expect("command should parse");
+
+    assert!(cli.verbose);
+}
+
+#[test]
 fn pair_accepts_a_machine_name_without_a_manual_mode_flag() {
     let cli = Cli::try_parse_from([
         "codex-relay",

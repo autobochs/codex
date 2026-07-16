@@ -14,6 +14,9 @@ codex-relay remote-control start
 Login uses device-code authentication by default. Pass `--browser` to use the
 localhost browser-callback flow instead.
 
+Pass `--verbose` to any command to print transport, enrollment, and pairing
+diagnostics. `RUST_LOG` can be used to supply a custom tracing filter.
+
 Use `--session-codex-home` to select the child app-server account explicitly,
 or `--codex` to run a particular Codex executable. Use `--name` to control the
 machine name shown to remote clients. Pairing always produces a short manual
