@@ -13,6 +13,7 @@ members = [
     "app-server-daemon",
     "app-server-client",
     "app-server-protocol",
+    "app-server-relay",
     "app-server-test-client",
     "apply-patch",
     "arg0",

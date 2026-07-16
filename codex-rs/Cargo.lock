@@ -2119,6 +2119,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-app-server-relay"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "codex-app-server-protocol",
+ "codex-app-server-transport",
+ "codex-config",
+ "codex-login",
+ "codex-state",
+ "codex-uds",
+ "dirs",
+ "futures",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
 name = "codex-app-server-test-client"
 version = "0.0.0"
 dependencies = [

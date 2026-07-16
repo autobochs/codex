@@ -1,0 +1,33 @@
+[package]
+name = "codex-app-server-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "codex-relay"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+codex-app-server-protocol = { workspace = true }
+codex-app-server-transport = { workspace = true }
+codex-config = { workspace = true }
+codex-login = { workspace = true }
+codex-state = { workspace = true }
+codex-uds = { workspace = true }
+dirs = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt-multi-thread", "signal", "time"] }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
