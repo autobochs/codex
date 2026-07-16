@@ -13,6 +13,7 @@ use clap::Parser;
 use clap::Subcommand;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::JSONRPCMessage;
+use codex_app_server_protocol::RemoteControlConnectionStatus;
 use codex_app_server_protocol::RemoteControlPairingStartParams;
 use codex_app_server_protocol::RemoteControlPairingStatusParams;
 use codex_app_server_protocol::RequestId;
@@ -52,6 +53,7 @@ use tokio_util::sync::CancellationToken;
 
 const CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api/";
 const CHILD_READY_TIMEOUT: Duration = Duration::from_secs(15);
+const REMOTE_CONTROL_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const UDS_HANDSHAKE_URL: &str = "ws://localhost/rpc";
 
 #[derive(Debug, Parser)]
@@ -224,6 +226,31 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
 
     let child_runtime = ChildRuntime::start(&args).await?;
     if pairing_mode == PairingMode::Manual {
+        let mut status_rx = remote_handle.status_receiver();
+        tokio::time::timeout(REMOTE_CONTROL_READY_TIMEOUT, async {
+            loop {
+                match status_rx.borrow().status {
+                    RemoteControlConnectionStatus::Connected => return Ok(()),
+                    RemoteControlConnectionStatus::Connecting => {}
+                    RemoteControlConnectionStatus::Disabled => {
+                        return Err(anyhow!(
+                            "remote control became disabled before pairing"
+                        ));
+                    }
+                    RemoteControlConnectionStatus::Errored => {
+                        return Err(anyhow!(
+                            "remote-control websocket failed before pairing; check the relay account and backend URL"
+                        ));
+                    }
+                }
+                status_rx
+                    .changed()
+                    .await
+                    .context("remote-control status channel closed before pairing")?;
+            }
+        })
+        .await
+        .context("timed out waiting for the remote-control websocket before pairing")??;
         let pairing = remote_handle
             .start_pairing(
                 RemoteControlPairingStartParams { manual_code: true },

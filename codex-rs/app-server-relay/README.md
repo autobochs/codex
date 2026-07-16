@@ -17,7 +17,7 @@ localhost browser-callback flow instead.
 Use `--session-codex-home` to select the child app-server account explicitly,
 or `--codex` to run a particular Codex executable. Use `--name` to control the
 machine name shown to remote clients. Pairing always produces a short manual
-code. The relay starts one child
+code after the remote-control websocket is connected. The relay starts one child
 app-server and maps every remote logical client to a separate Unix-socket
 connection, while Codex multiplexes all threads in the child process.
 
