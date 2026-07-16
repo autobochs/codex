@@ -6,10 +6,13 @@ subprocess. Relay credentials default to
 `CODEX_HOME`.
 
 ```console
-codex-relay login --device-auth
+codex-relay login
 codex-relay remote-control pair
 codex-relay remote-control start
 ```
+
+Login uses device-code authentication by default. Pass `--browser` to use the
+localhost browser-callback flow instead.
 
 Use `--session-codex-home` to select the child app-server account explicitly,
 or `--codex` to run a particular Codex executable. Use `--name` to control the

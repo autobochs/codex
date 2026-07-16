@@ -69,9 +69,9 @@ struct Cli {
 enum RelayCommand {
     /// Log the relay into the ChatGPT account used for remote control.
     Login {
-        /// Use the device-code flow instead of opening a browser.
+        /// Use the local browser callback flow instead of device-code authentication.
         #[arg(long)]
-        device_auth: bool,
+        browser: bool,
     },
     /// Run the relay, optionally creating a new pairing code.
     RemoteControl {
@@ -130,7 +130,7 @@ async fn main() -> Result<()> {
     restrict_relay_home_permissions(&relay_home)?;
 
     match cli.command {
-        RelayCommand::Login { device_auth } => login(relay_home, device_auth).await,
+        RelayCommand::Login { browser } => login(relay_home, browser).await,
         RelayCommand::RemoteControl { command } => match command {
             RemoteControlCommand::Start(args) => {
                 run_relay(relay_home, args, PairingMode::None).await
@@ -155,7 +155,7 @@ fn restrict_relay_home_permissions(_relay_home: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn login(relay_home: PathBuf, device_auth: bool) -> Result<()> {
+async fn login(relay_home: PathBuf, browser: bool) -> Result<()> {
     let options = ServerOptions::new(
         relay_home,
         CLIENT_ID.to_string(),
@@ -164,7 +164,7 @@ async fn login(relay_home: PathBuf, device_auth: bool) -> Result<()> {
         AuthKeyringBackendKind::default(),
         /*auth_route_config*/ None,
     );
-    if device_auth {
+    if !browser {
         run_device_code_login(options).await?;
         return Ok(());
     }

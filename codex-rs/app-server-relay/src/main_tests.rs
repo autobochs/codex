@@ -6,6 +6,22 @@ use tokio::time::timeout;
 use tokio_tungstenite::accept_async;
 
 #[test]
+fn login_defaults_to_device_auth_with_an_explicit_browser_override() {
+    let default = Cli::try_parse_from(["codex-relay", "login"]).expect("command should parse");
+    assert!(matches!(
+        default.command,
+        RelayCommand::Login { browser: false }
+    ));
+
+    let browser =
+        Cli::try_parse_from(["codex-relay", "login", "--browser"]).expect("command should parse");
+    assert!(matches!(
+        browser.command,
+        RelayCommand::Login { browser: true }
+    ));
+}
+
+#[test]
 fn defaults_to_stock_codex_and_chatgpt_backend() {
     let cli = Cli::try_parse_from(["codex-relay", "remote-control", "start"])
         .expect("command should parse");
