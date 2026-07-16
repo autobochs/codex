@@ -3,6 +3,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -12,6 +14,7 @@ use clap::Subcommand;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::JSONRPCMessage;
 use codex_app_server_protocol::RemoteControlPairingStartParams;
+use codex_app_server_protocol::RemoteControlPairingStatusParams;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotificationEnvelope;
 use codex_app_server_protocol::ServerRequest;
@@ -85,16 +88,13 @@ enum RemoteControlCommand {
     Pair {
         #[command(flatten)]
         start: StartArgs,
-        /// Ask the backend for a manual pairing code.
-        #[arg(long)]
-        manual: bool,
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PairingMode {
     None,
-    Code { manual: bool },
+    Manual,
 }
 
 #[derive(Debug, clap::Args)]
@@ -110,6 +110,10 @@ struct StartArgs {
     /// Override the ChatGPT backend used by remote control.
     #[arg(long, default_value = CHATGPT_BASE_URL)]
     remote_control_url: String,
+
+    /// Name shown for this machine in remote control.
+    #[arg(long)]
+    name: Option<String>,
 }
 
 #[tokio::main]
@@ -131,8 +135,8 @@ async fn main() -> Result<()> {
             RemoteControlCommand::Start(args) => {
                 run_relay(relay_home, args, PairingMode::None).await
             }
-            RemoteControlCommand::Pair { start, manual } => {
-                run_relay(relay_home, start, PairingMode::Code { manual }).await
+            RemoteControlCommand::Pair { start } => {
+                run_relay(relay_home, start, PairingMode::Manual).await
             }
         },
     }
@@ -206,6 +210,7 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
         RemoteControlStartConfig {
             remote_control_url: args.remote_control_url.clone(),
             installation_id,
+            server_name: args.name.clone(),
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db),
@@ -218,20 +223,50 @@ async fn run_relay(relay_home: PathBuf, args: StartArgs, pairing_mode: PairingMo
     .await?;
 
     let child_runtime = ChildRuntime::start(&args).await?;
-    if let PairingMode::Code { manual } = pairing_mode {
+    if pairing_mode == PairingMode::Manual {
         let pairing = remote_handle
             .start_pairing(
-                RemoteControlPairingStartParams {
-                    manual_code: manual,
-                },
+                RemoteControlPairingStartParams { manual_code: true },
                 /*app_server_client_name*/ None,
             )
-            .await?;
-        eprintln!("Pairing code: {}", pairing.pairing_code);
-        if let Some(manual_code) = pairing.manual_pairing_code {
-            eprintln!("Manual pairing code: {manual_code}");
-        }
+            .await
+            .context("failed to create a manual remote-control pairing code")?;
+        let manual_code = pairing
+            .manual_pairing_code
+            .context("remote-control backend did not return the requested manual pairing code")?;
+        eprintln!("Pairing code: {manual_code}");
         eprintln!("Pairing expires at Unix time {}", pairing.expires_at);
+        let pairing_handle = remote_handle.clone();
+        tokio::spawn(async move {
+            loop {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_secs() as i64)
+                    .unwrap_or_default();
+                if now >= pairing.expires_at {
+                    eprintln!("Pairing expired before it was claimed.");
+                    break;
+                }
+                match pairing_handle
+                    .pairing_status(RemoteControlPairingStatusParams {
+                        pairing_code: None,
+                        manual_pairing_code: Some(manual_code.clone()),
+                    })
+                    .await
+                {
+                    Ok(status) if status.claimed => {
+                        eprintln!("Pairing completed successfully.");
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("Pairing status check failed: {error}");
+                        break;
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
+        });
     }
     eprintln!("Relay connected; press Ctrl-C to stop.");
 

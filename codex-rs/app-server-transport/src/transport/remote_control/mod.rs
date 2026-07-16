@@ -65,6 +65,8 @@ use tracing::warn;
 pub struct RemoteControlStartConfig {
     pub remote_control_url: String,
     pub installation_id: String,
+    /// Overrides the host name advertised to remote-control clients.
+    pub server_name: Option<String>,
     pub policy: RemoteControlPolicy,
 }
 
@@ -481,11 +483,17 @@ impl RemoteControlHandle {
                         RemoteControlEnrollmentSelection::ReplaceExisting,
                     )
                     .await?;
-                    return Err(pairing_unavailable_error());
+                    return Err(io::Error::new(
+                        err.kind(),
+                        format!("pairing failed after enrollment was replaced: {err}"),
+                    ));
                 }
                 io::ErrorKind::PermissionDenied => {
                     clear_pairing_server_token(&mut current_enrollment, &mut enrollment)?;
-                    return Err(pairing_unavailable_error());
+                    return Err(io::Error::new(
+                        err.kind(),
+                        format!("pairing authorization failed after token refresh: {err}"),
+                    ));
                 }
                 _ => {}
             }
@@ -695,11 +703,19 @@ impl RemoteControlHandle {
                         RemoteControlEnrollmentSelection::ReplaceExisting,
                     )
                     .await?;
-                    return Err(pairing_unavailable_error());
+                    return Err(io::Error::new(
+                        err.kind(),
+                        format!(
+                            "pairing status was not found after enrollment was replaced: {err}"
+                        ),
+                    ));
                 }
                 io::ErrorKind::PermissionDenied => {
                     clear_pairing_server_token(&mut current_enrollment, &mut enrollment)?;
-                    return Err(pairing_unavailable_error());
+                    return Err(io::Error::new(
+                        err.kind(),
+                        format!("pairing status authorization failed after token refresh: {err}"),
+                    ));
                 }
                 _ => {}
             }
@@ -976,7 +992,9 @@ pub async fn start_remote_control(
     let websocket_pairing_persistence_key = pairing_persistence_key.clone();
     let handle_auth_manager = auth_manager.clone();
     let handle_state_db = state_db.clone();
-    let server_name = gethostname().to_string_lossy().trim().to_string();
+    let server_name = config
+        .server_name
+        .unwrap_or_else(|| gethostname().to_string_lossy().trim().to_string());
     let remote_control_url = config.remote_control_url;
     let installation_id = config.installation_id;
     let initial_status = RemoteControlStatusChangedNotification {

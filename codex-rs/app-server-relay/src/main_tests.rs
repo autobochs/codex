@@ -17,9 +17,39 @@ fn defaults_to_stock_codex_and_chatgpt_backend() {
     };
 
     assert_eq!(
-        (args.codex, args.session_codex_home, args.remote_control_url),
-        (PathBuf::from("codex"), None, CHATGPT_BASE_URL.to_string())
+        (
+            args.codex,
+            args.session_codex_home,
+            args.remote_control_url,
+            args.name,
+        ),
+        (
+            PathBuf::from("codex"),
+            None,
+            CHATGPT_BASE_URL.to_string(),
+            None,
+        )
     );
+}
+
+#[test]
+fn pair_accepts_a_machine_name_without_a_manual_mode_flag() {
+    let cli = Cli::try_parse_from([
+        "codex-relay",
+        "remote-control",
+        "pair",
+        "--name",
+        "build-box",
+    ])
+    .expect("command should parse");
+    let RelayCommand::RemoteControl {
+        command: RemoteControlCommand::Pair { start },
+    } = cli.command
+    else {
+        panic!("expected remote-control pair command");
+    };
+
+    assert_eq!(start.name.as_deref(), Some("build-box"));
 }
 
 #[test]

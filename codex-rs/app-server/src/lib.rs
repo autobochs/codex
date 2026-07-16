@@ -743,6 +743,7 @@ pub async fn run_main_with_transport_options(
         RemoteControlStartConfig {
             remote_control_url: config.chatgpt_base_url.clone(),
             installation_id: installation_id.clone(),
+            server_name: None,
             policy: remote_control_policy,
         },
         state_db.clone(),

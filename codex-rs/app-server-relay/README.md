@@ -6,13 +6,15 @@ subprocess. Relay credentials default to
 `CODEX_HOME`.
 
 ```console
-codex-relay login
+codex-relay login --device-auth
 codex-relay remote-control pair
 codex-relay remote-control start
 ```
 
 Use `--session-codex-home` to select the child app-server account explicitly,
-or `--codex` to run a particular Codex executable. The relay starts one child
+or `--codex` to run a particular Codex executable. Use `--name` to control the
+machine name shown to remote clients. Pairing always produces a short manual
+code. The relay starts one child
 app-server and maps every remote logical client to a separate Unix-socket
 connection, while Codex multiplexes all threads in the child process.
 

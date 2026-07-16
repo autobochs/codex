@@ -231,6 +231,7 @@ async fn explicit_disabled_start_ignores_persisted_enable() {
         RemoteControlStartConfig {
             remote_control_url: TEST_REMOTE_CONTROL_URL.to_string(),
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -293,6 +294,7 @@ async fn managed_disable_overrides_startup_and_persisted_enablement() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::DisabledByRequirements,
         },
         Some(state_db.clone()),
@@ -533,6 +535,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages() 
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -829,6 +832,7 @@ async fn remote_control_transport_reconnects_after_disconnect() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -931,6 +935,7 @@ async fn remote_control_transport_refreshes_server_token_after_websocket_unautho
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -1012,6 +1017,7 @@ async fn remote_control_start_allows_remote_control_invalid_url_when_disabled() 
         RemoteControlStartConfig {
             remote_control_url: "https://internal.example.com/backend-api/".to_string(),
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         /*state_db*/ None,
@@ -1055,6 +1061,7 @@ async fn remote_control_start_allows_missing_auth_when_enabled() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -1091,6 +1098,7 @@ async fn remote_control_start_reports_missing_state_db_as_disabled_when_enabled(
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         /*state_db*/ None,
@@ -1151,6 +1159,7 @@ async fn remote_control_handle_enable_disable_stops_and_restarts_connections() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -1271,6 +1280,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -1442,7 +1452,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
 }
 
 #[tokio::test]
-async fn remote_control_http_mode_enrolls_before_connecting() {
+async fn remote_control_http_mode_enrolls_with_configured_server_name_before_connecting() {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("listener should bind");
@@ -1450,12 +1460,13 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
     let codex_home = TempDir::new().expect("temp dir should create");
     let (transport_event_tx, mut transport_event_rx) =
         mpsc::channel::<TransportEvent>(CHANNEL_CAPACITY);
-    let expected_server_name = gethostname().to_string_lossy().trim().to_string();
+    let expected_server_name = "configured-server-name".to_string();
     let shutdown_token = CancellationToken::new();
     let (remote_task, remote_handle) = start_remote_control(
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: Some(expected_server_name.clone()),
             policy: RemoteControlPolicy::Allowed,
         },
         Some(remote_control_state_runtime(&codex_home).await),
@@ -1513,12 +1524,15 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
 
     let (handshake_request, mut websocket) =
         accept_remote_control_backend_connection(&listener).await;
-    expect_remote_control_status(
-        &mut status_rx,
-        /*expected_status*/ None,
-        Some("env_test"),
-    )
-    .await;
+    timeout(Duration::from_secs(5), status_rx.changed())
+        .await
+        .expect("remote control status event should arrive in time")
+        .expect("remote control status watch should remain open");
+    let status = status_rx.borrow();
+    assert_eq!(status.server_name, expected_server_name);
+    assert_eq!(status.installation_id, TEST_INSTALLATION_ID);
+    assert_eq!(status.environment_id.as_deref(), Some("env_test"));
+    drop(status);
     assert_eq!(
         handshake_request.path,
         "/backend-api/wham/remote/control/server"
@@ -1710,6 +1724,7 @@ async fn remote_control_http_mode_refreshes_persisted_enrollment_before_connecti
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -1832,6 +1847,7 @@ async fn remote_control_stdio_mode_waits_for_client_name_before_connecting() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -1919,6 +1935,7 @@ async fn remote_control_waits_for_account_id_before_enrolling() {
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -2026,6 +2043,7 @@ async fn persisted_enable_does_not_follow_auth_to_an_account_without_a_preferenc
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -2144,6 +2162,7 @@ async fn remote_control_http_mode_reenrolls_when_refresh_reports_stale_enrollmen
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -2269,6 +2288,7 @@ async fn remote_control_http_mode_reenrolls_after_explicit_missing_server_404() 
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -2407,6 +2427,7 @@ async fn remote_control_http_mode_preserves_stale_enrollment_when_reenrollment_f
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
@@ -2529,6 +2550,7 @@ async fn remote_control_http_mode_preserves_enrollment_after_generic_websocket_4
         RemoteControlStartConfig {
             remote_control_url,
             installation_id: TEST_INSTALLATION_ID.to_string(),
+            server_name: None,
             policy: RemoteControlPolicy::Allowed,
         },
         Some(state_db.clone()),
