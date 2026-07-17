@@ -100,15 +100,24 @@ fn pair_accepts_a_machine_name_without_a_manual_mode_flag() {
 }
 
 #[test]
-fn installation_id_is_stable_within_relay_home() {
-    let relay_home = tempfile::tempdir().expect("temporary relay home should be created");
+fn installation_id_is_stable_within_codex_home() {
+    let codex_home = tempfile::tempdir().expect("temporary Codex home should be created");
 
-    let first = load_or_create_installation_id(relay_home.path())
+    let first = load_or_create_installation_id(codex_home.path())
         .expect("installation id should be created");
-    let second = load_or_create_installation_id(relay_home.path())
+    let second = load_or_create_installation_id(codex_home.path())
         .expect("installation id should be loaded");
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn explicit_codex_home_wins_for_enrollment_state() {
+    assert_eq!(
+        resolve_codex_home(Some(Path::new("/tmp/codex-home")))
+            .expect("explicit Codex home should resolve"),
+        PathBuf::from("/tmp/codex-home")
+    );
 }
 
 #[test]

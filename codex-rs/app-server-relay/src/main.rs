@@ -138,15 +138,7 @@ async fn main() -> Result<()> {
         .try_init()
         .map_err(|error| anyhow!("failed to initialize relay diagnostics: {error}"))?;
     let verbose = cli.verbose;
-    let relay_home = match cli.relay_home {
-        Some(path) => path,
-        None => match std::env::var_os("CODEX_HOME") {
-            Some(path) => PathBuf::from(path),
-            None => dirs::home_dir()
-                .context("could not determine the home directory")?
-                .join(".codex"),
-        },
-    };
+    let relay_home = resolve_codex_home(cli.relay_home.as_deref())?;
     std::fs::create_dir_all(&relay_home)
         .with_context(|| format!("failed to create {}", relay_home.display()))?;
     restrict_relay_home_permissions(&relay_home)?;
@@ -206,6 +198,9 @@ async fn run_relay(
     pairing_mode: PairingMode,
     verbose: bool,
 ) -> Result<()> {
+    let codex_home = resolve_codex_home(args.codex_home.as_deref())?;
+    std::fs::create_dir_all(&codex_home)
+        .with_context(|| format!("failed to create {}", codex_home.display()))?;
     let auth_manager = AuthManager::shared(
         relay_home.clone(),
         /*enable_codex_api_key_env*/ false,
@@ -229,8 +224,8 @@ async fn run_relay(
             ));
         }
     }
-    let state_db = StateRuntime::init(relay_home.clone(), "openai".to_string()).await?;
-    let installation_id = load_or_create_installation_id(&relay_home)?;
+    let state_db = StateRuntime::init(codex_home.clone(), "openai".to_string()).await?;
+    let installation_id = load_or_create_installation_id(&codex_home)?;
     let shutdown = CancellationToken::new();
     let (transport_tx, transport_rx) = mpsc::channel(128);
     let (mut remote_task, remote_handle) = start_remote_control(
@@ -367,8 +362,20 @@ async fn run_relay(
     run_result
 }
 
-fn load_or_create_installation_id(relay_home: &Path) -> Result<String> {
-    let path = relay_home.join("installation_id");
+fn resolve_codex_home(override_home: Option<&Path>) -> Result<PathBuf> {
+    if let Some(path) = override_home {
+        return Ok(path.to_path_buf());
+    }
+    if let Some(path) = std::env::var_os("CODEX_HOME") {
+        return Ok(PathBuf::from(path));
+    }
+    Ok(dirs::home_dir()
+        .context("could not determine the home directory")?
+        .join(".codex"))
+}
+
+fn load_or_create_installation_id(codex_home: &Path) -> Result<String> {
+    let path = codex_home.join("installation_id");
     if let Ok(value) = std::fs::read_to_string(&path) {
         let value = value.trim();
         if !value.is_empty() {
