@@ -149,6 +149,19 @@ fn rejects_non_object_child_message() {
     );
 }
 
+#[test]
+fn child_websocket_accepts_large_app_server_responses() {
+    let config = child_websocket_config();
+
+    assert_eq!(
+        (config.max_frame_size, config.max_message_size),
+        (
+            Some(CHILD_MAX_WEBSOCKET_MESSAGE_SIZE),
+            Some(CHILD_MAX_WEBSOCKET_MESSAGE_SIZE),
+        )
+    );
+}
+
 #[tokio::test]
 async fn bridge_forwards_messages_control_frames_and_disconnects() {
     let temp_dir = tempfile::tempdir().expect("temporary socket directory should be created");

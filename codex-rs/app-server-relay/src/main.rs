@@ -47,8 +47,9 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::WebSocketStream;
-use tokio_tungstenite::client_async;
+use tokio_tungstenite::client_async_with_config;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
@@ -56,6 +57,7 @@ const CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api/";
 const CHILD_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const REMOTE_CONTROL_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const UDS_HANDSHAKE_URL: &str = "ws://localhost/rpc";
+const CHILD_MAX_WEBSOCKET_MESSAGE_SIZE: usize = 128 << 20;
 
 #[derive(Debug, Parser)]
 #[command(name = "codex-relay")]
@@ -508,9 +510,10 @@ async fn connect_child(
     let stream = UnixStream::connect(socket_path)
         .await
         .with_context(|| format!("failed to connect to {}", socket_path.display()))?;
-    let (websocket, _) = client_async(UDS_HANDSHAKE_URL, stream)
-        .await
-        .context("child app-server WebSocket handshake failed")?;
+    let (websocket, _) =
+        client_async_with_config(UDS_HANDSHAKE_URL, stream, Some(child_websocket_config()))
+            .await
+            .context("child app-server WebSocket handshake failed")?;
     let (incoming_tx, incoming_rx) = mpsc::channel(128);
     let task = tokio::spawn(async move {
         if let Err(error) = run_connection(websocket, incoming_rx, remote_writer).await {
@@ -521,6 +524,12 @@ async fn connect_child(
         }
     });
     Ok(ConnectionBridge { incoming_tx, task })
+}
+
+fn child_websocket_config() -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_frame_size(Some(CHILD_MAX_WEBSOCKET_MESSAGE_SIZE))
+        .max_message_size(Some(CHILD_MAX_WEBSOCKET_MESSAGE_SIZE))
 }
 
 async fn run_connection(
